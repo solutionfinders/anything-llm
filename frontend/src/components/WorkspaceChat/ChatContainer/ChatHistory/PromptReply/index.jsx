@@ -9,6 +9,7 @@ import {
   THOUGHT_REGEX_OPEN,
   ThoughtChainComponent,
 } from "../ThoughtContainer";
+import FactCheckSummary from "../FactCheckSummary";
 
 const PromptReply = ({
   uuid,
@@ -18,6 +19,7 @@ const PromptReply = ({
   workspace,
   sources = [],
   closed = true,
+  factCheck = null,
 }) => {
   const assistantBackgroundColor = "bg-theme-bg-chat";
 
@@ -73,6 +75,7 @@ const PromptReply = ({
           />
         </div>
         <Citations sources={sources} />
+        <FactCheckSummary factCheck={factCheck} />
       </div>
     </div>
   );

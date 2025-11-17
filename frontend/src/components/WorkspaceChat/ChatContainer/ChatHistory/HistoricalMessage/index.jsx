@@ -5,6 +5,7 @@ import Actions from "./Actions";
 import renderMarkdown from "@/utils/chat/markdown";
 import { userFromStorage } from "@/utils/request";
 import Citations from "../Citation";
+import FactCheckSummary from "../FactCheckSummary";
 import { v4 } from "uuid";
 import DOMPurify from "@/utils/chat/purify";
 import { EditMessageForm, useEditMessage } from "./Actions/EditMessage";
@@ -37,6 +38,7 @@ const HistoricalMessage = ({
   forkThread,
   metrics = {},
   alignmentCls = "",
+  factCheck = null,
 }) => {
   const { t } = useTranslation();
   const { isEditing } = useEditMessage({ chatId, role });
@@ -152,7 +154,12 @@ const HistoricalMessage = ({
             alignmentCls={alignmentCls}
           />
         </div>
-        {role === "assistant" && <Citations sources={sources} />}
+        {role === "assistant" && (
+          <>
+            <FactCheckSummary factCheck={factCheck} />
+            <Citations sources={sources} />
+          </>
+        )}
       </div>
     </div>
   );

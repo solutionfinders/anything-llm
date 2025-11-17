@@ -12,6 +12,7 @@ const {
   recentChatHistory,
   sourceIdentifier,
 } = require("./index");
+const { factCheckerEnabled, runFactCheck } = require("./factChecker");
 
 const VALID_CHAT_MODE = ["chat", "query"];
 
@@ -96,9 +97,12 @@ async function streamChatWithWorkspace(
   // 2. Chatting in "query" mode and has at least 1 embedding
   let completeText;
   let metrics = {};
+  let factCheckResult = null;
+  let finalText;
   let contextTexts = [];
   let sources = [];
   let pinnedDocIdentifiers = [];
+  const shouldFactCheck = factCheckerEnabled();
   const { rawHistory, chatHistory } = await recentChatHistory({
     user,
     workspace,
@@ -241,9 +245,11 @@ async function streamChatWithWorkspace(
 
   // If streaming is not explicitly enabled for connector
   // we do regular waiting of a response and send a single chunk.
-  if (LLMConnector.streamingEnabled() !== true) {
+  if (LLMConnector.streamingEnabled() !== true || shouldFactCheck) {
     console.log(
-      `\x1b[31m[STREAMING DISABLED]\x1b[0m Streaming is not available for ${LLMConnector.constructor.name}. Will use regular chat method.`
+      `\x1b[31m[STREAMING DISABLED]\x1b[0m Streaming is not available for ${LLMConnector.constructor.name}. Will use regular chat method${
+        shouldFactCheck ? " because fact checking is enabled." : "."
+      }`
     );
     const { textResponse, metrics: performanceMetrics } =
       await LLMConnector.getChatCompletion(messages, {
@@ -252,13 +258,28 @@ async function streamChatWithWorkspace(
 
     completeText = textResponse;
     metrics = performanceMetrics;
+
+    if (completeText?.length && shouldFactCheck) {
+      factCheckResult = await runFactCheck({
+        workspace,
+        question: updatedMessage,
+        answer: completeText,
+        contextTexts,
+      });
+    }
+
+    finalText =
+      factCheckResult?.revisedAnswer?.length > 0
+        ? factCheckResult.revisedAnswer
+        : completeText;
     writeResponseChunk(response, {
       uuid,
       sources,
       type: "textResponseChunk",
-      textResponse: completeText,
+      textResponse: finalText,
       close: true,
       error: false,
+      factCheck: factCheckResult,
       metrics,
     });
   } else {
@@ -270,18 +291,20 @@ async function streamChatWithWorkspace(
       sources,
     });
     metrics = stream.metrics;
+    finalText = completeText;
   }
 
-  if (completeText?.length > 0) {
+  if (finalText?.length > 0) {
     const { chat } = await WorkspaceChats.new({
       workspaceId: workspace.id,
       prompt: message,
       response: {
-        text: completeText,
+        text: finalText,
         sources,
         type: chatMode,
         attachments,
         metrics,
+        factCheck: factCheckResult,
       },
       threadId: thread?.id || null,
       user,
