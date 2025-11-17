@@ -329,6 +329,7 @@ function buildMessages({
           error={props.error}
           workspace={workspace}
           closed={props.closed}
+          factCheck={props.factCheck}
         />
       );
     } else {
@@ -349,6 +350,7 @@ function buildMessages({
           forkThread={forkThread}
           metrics={props.metrics}
           alignmentCls={getMessageAlignment?.(props.role)}
+          factCheck={props.factCheck}
         />
       );
     }

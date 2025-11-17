@@ -14,6 +14,7 @@ const {
   EphemeralEventListener,
 } = require("../agents/ephemeral");
 const { Telemetry } = require("../../models/telemetry");
+const { factCheckerEnabled, runFactCheck } = require("./factChecker");
 
 /**
  * @typedef ResponseObject
@@ -24,6 +25,7 @@ const { Telemetry } = require("../../models/telemetry");
  * @property {boolean} close
  * @property {string|null} error
  * @property {object} metrics
+ * @property {object|null} factCheck
  */
 
 /**
@@ -309,6 +311,22 @@ async function chatSync({
       temperature: workspace?.openAiTemp ?? LLMConnector.defaultTemp,
     });
 
+  let factCheckResult = null;
+  let finalResponse = textResponse;
+
+  if (!!textResponse && factCheckerEnabled()) {
+    factCheckResult = await runFactCheck({
+      workspace,
+      question: message,
+      answer: textResponse,
+      contextTexts,
+    });
+
+    if (factCheckResult?.revisedAnswer?.length) {
+      finalResponse = factCheckResult.revisedAnswer;
+    }
+  }
+
   if (!textResponse) {
     return {
       id: uuid,
@@ -325,11 +343,12 @@ async function chatSync({
     workspaceId: workspace.id,
     prompt: message,
     response: {
-      text: textResponse,
+      text: finalResponse,
       sources,
       attachments,
       type: chatMode,
       metrics: performanceMetrics,
+      factCheck: factCheckResult,
     },
     threadId: thread?.id || null,
     apiSessionId: sessionId,
@@ -342,8 +361,9 @@ async function chatSync({
     close: true,
     error: null,
     chatId: chat.id,
-    textResponse,
+    textResponse: finalResponse,
     sources,
+    factCheck: factCheckResult,
     metrics: performanceMetrics,
   };
 }
