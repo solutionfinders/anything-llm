@@ -20,6 +20,7 @@ import paths from "@/utils/paths";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { chatQueryRefusalResponse } from "@/utils/chat";
+import FactCheckStatus from "./FactCheckStatus";
 
 const HistoricalMessage = ({
   uuid = v4(),
@@ -37,6 +38,7 @@ const HistoricalMessage = ({
   forkThread,
   metrics = {},
   alignmentCls = "",
+  factCheck = null,
 }) => {
   const { t } = useTranslation();
   const { isEditing } = useEditMessage({ chatId, role });
@@ -134,6 +136,9 @@ const HistoricalMessage = ({
                 </Link>
               )}
               <ChatAttachments attachments={attachments} />
+              {role === "assistant" && (
+                <FactCheckStatus factCheck={factCheck} />
+              )}
             </div>
           )}
         </div>
@@ -191,7 +196,8 @@ export default memo(
     return (
       prevProps.message === nextProps.message &&
       prevProps.isLastMessage === nextProps.isLastMessage &&
-      prevProps.chatId === nextProps.chatId
+      prevProps.chatId === nextProps.chatId &&
+      prevProps.factCheck === nextProps.factCheck
     );
   }
 );
