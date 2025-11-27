@@ -22,6 +22,7 @@ export default function handleChat(
     chatId = null,
     action = null,
     metrics = {},
+    factCheck = null,
   } = chatResult;
 
   if (type === "abort" || type === "statusResponse") {
@@ -39,6 +40,7 @@ export default function handleChat(
         animate,
         pending: false,
         metrics,
+        factCheck,
       },
     ]);
     _chatHistory.push({
@@ -52,6 +54,7 @@ export default function handleChat(
       animate,
       pending: false,
       metrics,
+      factCheck,
     });
   } else if (type === "textResponse") {
     setLoadingResponse(false);
@@ -63,13 +66,14 @@ export default function handleChat(
         role: "assistant",
         sources,
         closed: close,
-        error,
-        animate: !close,
-        pending: false,
-        chatId,
-        metrics,
-      },
-    ]);
+      error,
+      animate: !close,
+      pending: false,
+      chatId,
+      metrics,
+      factCheck,
+    },
+  ]);
     _chatHistory.push({
       uuid,
       content: textResponse,
@@ -81,6 +85,7 @@ export default function handleChat(
       pending: false,
       chatId,
       metrics,
+      factCheck,
     });
     emitAssistantMessageCompleteEvent(chatId);
   } else if (
@@ -102,6 +107,7 @@ export default function handleChat(
           pending: false,
           chatId,
           metrics,
+          factCheck,
         };
 
         _chatHistory[chatIdx - 1] = { ..._chatHistory[chatIdx - 1], chatId }; // update prompt with chatID
@@ -119,6 +125,7 @@ export default function handleChat(
           pending: false,
           chatId,
           metrics,
+          factCheck,
         };
       }
       _chatHistory[chatIdx] = updatedHistory;
@@ -134,6 +141,7 @@ export default function handleChat(
         pending: false,
         chatId,
         metrics,
+        factCheck,
       });
     }
     setChatHistory([..._chatHistory]);
