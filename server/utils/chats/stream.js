@@ -5,6 +5,7 @@ const { WorkspaceParsedFiles } = require("../../models/workspaceParsedFiles");
 const { getVectorDbClass, getLLMProvider } = require("../helpers");
 const { writeResponseChunk } = require("../helpers/chat/responses");
 const { grepAgents } = require("./agents");
+const { FactChecker } = require("./factChecker");
 const {
   grepCommand,
   VALID_COMMANDS,
@@ -26,6 +27,7 @@ async function streamChatWithWorkspace(
 ) {
   const uuid = uuidv4();
   const updatedMessage = await grepCommand(message, user);
+  const factChecker = FactChecker.fromEnv(workspace);
 
   if (Object.keys(VALID_COMMANDS).includes(updatedMessage)) {
     const data = await VALID_COMMANDS[updatedMessage](
@@ -96,6 +98,7 @@ async function streamChatWithWorkspace(
   // 2. Chatting in "query" mode and has at least 1 embedding
   let completeText;
   let metrics = {};
+  let factCheckMeta = null;
   let contextTexts = [];
   let sources = [];
   let pinnedDocIdentifiers = [];
@@ -239,12 +242,16 @@ async function streamChatWithWorkspace(
     rawHistory
   );
 
-  // If streaming is not explicitly enabled for connector
+  // If streaming is not explicitly enabled for connector OR we need to fact check
   // we do regular waiting of a response and send a single chunk.
-  if (LLMConnector.streamingEnabled() !== true) {
-    console.log(
-      `\x1b[31m[STREAMING DISABLED]\x1b[0m Streaming is not available for ${LLMConnector.constructor.name}. Will use regular chat method.`
-    );
+  const shouldStream =
+    LLMConnector.streamingEnabled() === true && !factChecker.enabled;
+
+  if (!shouldStream) {
+    const streamingReason = LLMConnector.streamingEnabled()
+      ? "Fact checking enabled; using non-streamed response before verification."
+      : `Streaming is not available for ${LLMConnector.constructor.name}. Will use regular chat method.`;
+    console.log(`\x1b[31m[STREAMING DISABLED]\x1b[0m ${streamingReason}`);
     const { textResponse, metrics: performanceMetrics } =
       await LLMConnector.getChatCompletion(messages, {
         temperature: workspace?.openAiTemp ?? LLMConnector.defaultTemp,
@@ -253,6 +260,34 @@ async function streamChatWithWorkspace(
 
     completeText = textResponse;
     metrics = performanceMetrics;
+
+    if (factChecker.enabled && completeText?.length > 0) {
+      const factCheckResult = await factChecker.review({
+        question: message,
+        answer: completeText,
+        sources,
+      });
+
+      factCheckMeta = {
+        enabled: true,
+        applied: factCheckResult.applied,
+        provider: factCheckResult.provider,
+        model: factCheckResult.model,
+        ...(factCheckResult?.durationMs
+          ? { durationMs: factCheckResult.durationMs }
+          : {}),
+        ...(factCheckResult?.error ? { error: factCheckResult.error } : {}),
+      };
+
+      completeText = factCheckResult.checkedAnswer;
+      metrics = {
+        ...metrics,
+        ...(factCheckResult?.durationMs
+          ? { factCheckDurationMs: factCheckResult.durationMs }
+          : {}),
+      };
+    }
+
     writeResponseChunk(response, {
       uuid,
       sources,
@@ -261,6 +296,7 @@ async function streamChatWithWorkspace(
       close: true,
       error: false,
       metrics,
+      ...(factCheckMeta ? { factCheck: factCheckMeta } : {}),
     });
   } else {
     const stream = await LLMConnector.streamGetChatCompletion(messages, {
@@ -284,6 +320,7 @@ async function streamChatWithWorkspace(
         type: chatMode,
         attachments,
         metrics,
+        ...(factCheckMeta ? { factCheck: factCheckMeta } : {}),
       },
       threadId: thread?.id || null,
       user,
@@ -296,6 +333,7 @@ async function streamChatWithWorkspace(
       error: false,
       chatId: chat.id,
       metrics,
+      ...(factCheckMeta ? { factCheck: factCheckMeta } : {}),
     });
     return;
   }
