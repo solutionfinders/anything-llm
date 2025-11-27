@@ -29,6 +29,14 @@ export default function FactCheckStatus({ factCheck = null }) {
         container: "border-amber-500/40 bg-amber-500/10",
         textClass: "text-amber-100",
       }
+    : factCheck.insufficientContext
+    ? {
+        Icon: ShieldSlash,
+        label: "Context missing",
+        helper: "Information not found in provided context.",
+        container: "border-rose-500/40 bg-rose-500/10",
+        textClass: "text-rose-100",
+      }
     : factCheck.applied
     ? {
         Icon: ShieldCheck,

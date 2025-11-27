@@ -273,6 +273,9 @@ async function streamChatWithWorkspace(
         applied: factCheckResult.applied,
         provider: factCheckResult.provider,
         model: factCheckResult.model,
+        ...(factCheckResult?.insufficientContext
+          ? { insufficientContext: true }
+          : {}),
         ...(factCheckResult?.durationMs
           ? { durationMs: factCheckResult.durationMs }
           : {}),

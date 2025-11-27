@@ -35,6 +35,19 @@ class FactChecker {
     return new FactChecker({ workspace });
   }
 
+  static isInsufficientContextAnswer(text) {
+    if (!text) return false;
+
+    const normalized = text.toLowerCase();
+    return (
+      normalized.includes("not enough information") ||
+      normalized.includes("not enough info") ||
+      normalized.includes("not enough context") ||
+      normalized.includes("insufficient information") ||
+      normalized.includes("insufficient context")
+    );
+  }
+
   factCheckMessages({ question, answer, sources = [] }) {
     const formattedSources = sources
       .map((source, idx) => {
@@ -55,7 +68,11 @@ class FactChecker {
 
   async review({ question, answer, sources = [] }) {
     if (!this.enabled) {
-      return { applied: false, checkedAnswer: answer };
+      return {
+        applied: false,
+        checkedAnswer: answer,
+        insufficientContext: false,
+      };
     }
 
     try {
@@ -66,9 +83,14 @@ class FactChecker {
         { temperature: 0 }
       );
 
+      const insufficientContext = FactChecker.isInsufficientContextAnswer(
+        textResponse
+      );
+
       return {
         applied: true,
         checkedAnswer: textResponse?.trim() || answer,
+        insufficientContext,
         durationMs: Date.now() - start,
         provider: this.provider,
         model: this.model,
@@ -78,6 +100,7 @@ class FactChecker {
       return {
         applied: false,
         checkedAnswer: answer,
+        insufficientContext: false,
         error: error.message,
         provider: this.provider,
         model: this.model,
