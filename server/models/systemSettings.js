@@ -11,6 +11,14 @@ const { PGVector } = require("../utils/vectorDbProviders/pgvector");
 const { NativeEmbedder } = require("../utils/EmbeddingEngines/native");
 const { getBaseLLMProviderModel } = require("../utils/helpers");
 
+const DEFAULT_RESPONSE_GUARD_SETTINGS = {
+  enabled: false,
+  blockPhoneNumbers: true,
+  blockContactNames: true,
+  customRules: "",
+  fallbackText: "This response cannot be provided.",
+};
+
 function isNullOrNaN(value) {
   if (value === null) return true;
   return isNaN(value);
@@ -36,6 +44,7 @@ const SystemSettings = {
     "feature_flags",
     "meta_page_title",
     "meta_page_favicon",
+    "response_guard_settings",
   ],
   supportedFields: [
     "logo_filename",
@@ -51,6 +60,7 @@ const SystemSettings = {
     "agent_sql_connections",
     "custom_app_name",
     "default_system_prompt",
+    "response_guard_settings",
 
     // Meta page customization
     "meta_page_title",
@@ -130,6 +140,24 @@ const SystemSettings = {
         );
         return null;
       }
+    },
+    response_guard_settings: (update) => {
+      const parsed = safeJsonParse(
+        typeof update === "string" ? update : JSON.stringify(update),
+        DEFAULT_RESPONSE_GUARD_SETTINGS
+      );
+      const merged = {
+        ...DEFAULT_RESPONSE_GUARD_SETTINGS,
+        ...(parsed || {}),
+      };
+      merged.enabled = !!merged.enabled;
+      merged.blockPhoneNumbers = !!merged.blockPhoneNumbers;
+      merged.blockContactNames = !!merged.blockContactNames;
+      merged.customRules = `${merged.customRules || ""}`.slice(0, 2_000);
+      merged.fallbackText = `${
+        merged.fallbackText || DEFAULT_RESPONSE_GUARD_SETTINGS.fallbackText
+      }`.slice(0, 4_000);
+      return JSON.stringify(merged);
     },
     default_agent_skills: (updates) => {
       try {
@@ -668,6 +696,15 @@ const SystemSettings = {
         (await SystemSettings.get({ label: "experimental_live_file_sync" }))
           ?.value === "enabled",
     };
+  },
+
+  responseGuardSettings: async function () {
+    const settings = await this.get({ label: "response_guard_settings" });
+    const parsed = safeJsonParse(
+      settings?.value,
+      DEFAULT_RESPONSE_GUARD_SETTINGS
+    );
+    return { ...DEFAULT_RESPONSE_GUARD_SETTINGS, ...(parsed || {}) };
   },
 
   /**

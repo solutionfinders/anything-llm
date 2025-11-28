@@ -402,6 +402,12 @@ function adminEndpoints(app) {
               requestedSettings[label] =
                 await SystemSettings.getValueOrFallback({ label }, null);
               break;
+            case "response_guard_settings":
+              requestedSettings[label] = safeJsonParse(
+                (await SystemSettings.get({ label }))?.value,
+                await SystemSettings.responseGuardSettings()
+              );
+              break;
             default:
               break;
           }

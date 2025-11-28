@@ -3,6 +3,7 @@ const { DocumentManager } = require("../DocumentManager");
 const { WorkspaceChats } = require("../../models/workspaceChats");
 const { getVectorDbClass, getLLMProvider } = require("../helpers");
 const { writeResponseChunk } = require("../helpers/chat/responses");
+const { fetchGuardSettings, applyResponseGuard } = require("./responseGuard");
 const {
   chatPrompt,
   sourceIdentifier,
@@ -207,6 +208,7 @@ async function chatSync({
     provider: workspace?.chatProvider,
     model: workspace?.chatModel,
   });
+  const responseGuardSettings = await fetchGuardSettings();
   const VectorDb = getVectorDbClass();
   const messageLimit = workspace?.openAiHistory || 20;
   const hasVectorizedSpace = await VectorDb.hasNamespace(workspace.slug);
@@ -394,7 +396,18 @@ async function chatSync({
       user: user,
     });
 
-  if (!textResponse) {
+  let moderatedText = textResponse;
+  if (responseGuardSettings.enabled && textResponse) {
+    const guardResult = await applyResponseGuard({
+      responseText: textResponse,
+      workspace,
+      settings: responseGuardSettings,
+    });
+    moderatedText = guardResult.text;
+    if (guardResult.allow === false) sources = [];
+  }
+
+  if (!moderatedText) {
     return {
       id: uuid,
       type: "abort",
@@ -410,7 +423,7 @@ async function chatSync({
     workspaceId: workspace.id,
     prompt: message,
     response: {
-      text: textResponse,
+      text: moderatedText,
       sources,
       attachments,
       type: chatMode,
@@ -427,7 +440,7 @@ async function chatSync({
     close: true,
     error: null,
     chatId: chat.id,
-    textResponse,
+    textResponse: moderatedText,
     sources,
     metrics: performanceMetrics,
   };
@@ -548,6 +561,7 @@ async function streamChat({
     provider: workspace?.chatProvider,
     model: workspace?.chatModel,
   });
+  const responseGuardSettings = await fetchGuardSettings();
 
   const VectorDb = getVectorDbClass();
   const messageLimit = workspace?.openAiHistory || 20;
@@ -740,11 +754,15 @@ async function streamChat({
     rawHistory
   );
 
+  const streamingAllowed =
+    LLMConnector.streamingEnabled() === true &&
+    responseGuardSettings.enabled !== true;
+
   // If streaming is not explicitly enabled for connector
   // we do regular waiting of a response and send a single chunk.
-  if (LLMConnector.streamingEnabled() !== true) {
+  if (!streamingAllowed) {
     console.log(
-      `\x1b[31m[STREAMING DISABLED]\x1b[0m Streaming is not available for ${LLMConnector.constructor.name}. Will use regular chat method.`
+      `\x1b[31m[STREAMING DISABLED]\x1b[0m Streaming is not available for ${LLMConnector.constructor.name} or has been disabled by response guard settings. Will use regular chat method.`
     );
     const { textResponse, metrics: performanceMetrics } =
       await LLMConnector.getChatCompletion(messages, {
@@ -752,6 +770,15 @@ async function streamChat({
         user: user,
       });
     completeText = textResponse;
+    if (responseGuardSettings.enabled) {
+      const guardResult = await applyResponseGuard({
+        responseText: completeText,
+        workspace,
+        settings: responseGuardSettings,
+      });
+      completeText = guardResult.text;
+      if (guardResult.allow === false) sources = [];
+    }
     metrics = performanceMetrics;
     writeResponseChunk(response, {
       uuid,
